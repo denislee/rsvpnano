@@ -35,7 +35,17 @@ upload:
 		exit 1; \
 	fi; \
 	echo ">> Found device at $$port — uploading ($(ENV))..."; \
-	$(PIO) run -e $(ENV) -t upload --upload-port "$$port"
+	if ! $(PIO) run -e $(ENV) -t upload --upload-port "$$port"; then \
+		echo ""; \
+		echo "!! Upload failed to connect to the ESP32-S3."; \
+		echo "   While the app runs, this board claims USB as a mass-storage device and"; \
+		echo "   will not auto-enter the bootloader. Put it in ROM download mode by hand:"; \
+		echo "     1. Hold the BOOT button down."; \
+		echo "     2. Tap RESET (or unplug/replug USB) while still holding BOOT."; \
+		echo "     3. Release BOOT, then run 'make upload' again."; \
+		echo "   After flashing, tap RESET to run the new firmware."; \
+		exit 1; \
+	fi
 
 monitor:
 	$(PIO) device monitor
