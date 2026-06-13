@@ -44,6 +44,9 @@ constexpr int kRsvpGuideTickHeight = 5;
 constexpr int kRsvpGuideTopOffset = 7;
 constexpr int kRsvpGuideBottomOffset = 7;
 constexpr int kWpmFeedbackBottomMargin = 16;
+// In portrait orientation the reading word sits near the top of the screen
+// instead of being vertically centered. This is the gap above the word.
+constexpr int kReaderPortraitTopMargin = 28;
 constexpr int kTinyGlyphWidth = 5;
 constexpr int kTinyGlyphHeight = 7;
 constexpr int kTinyGlyphSpacing = 1;
@@ -253,8 +256,7 @@ bool shouldDrawInvertedGlyph(char c) {
 
 String readerChromeKey(const DisplayManager::ReaderChrome &chrome) {
   return String(chrome.showBattery ? 1 : 0) + String(chrome.showChapter ? 1 : 0) +
-         String(chrome.showProgress ? 1 : 0) +
-         String(chrome.showPreviousSentenceHint ? 1 : 0);
+         String(chrome.showProgress ? 1 : 0);
 }
 
 int baseGlyphHeightForTypeface(DisplayManager::ReaderTypeface typeface) {
@@ -1123,6 +1125,13 @@ int DisplayManager::logicalWidth() const { return logicalWidthForOrientation(uiO
 
 int DisplayManager::logicalHeight() const { return logicalHeightForOrientation(uiOrientation_); }
 
+int DisplayManager::readerWordY(int virtualHeight, int textHeight) const {
+  if (isPortraitOrientation(uiOrientation_)) {
+    return std::min(std::max(0, virtualHeight - textHeight), kReaderPortraitTopMargin);
+  }
+  return std::max(0, (virtualHeight - textHeight) / 2);
+}
+
 int DisplayManager::chooseTextScale(const String &word) const {
   const int usableWidth = std::max(1, measureTextWidth(word));
   const int maxScaleX = kDisplayWidth / usableWidth;
@@ -1566,7 +1575,7 @@ void DisplayManager::drawSerifTextScaledCentered(const String &text, int y, uint
 }
 
 void DisplayManager::drawBatteryBadge() {
-  drawBatteryBadge(kDisplayWidth, kDisplayHeight);
+  drawBatteryBadge(logicalWidth(), logicalHeight());
 }
 
 void DisplayManager::drawBatteryBadge(int logicalWidth, int logicalHeight) {
@@ -1580,23 +1589,20 @@ void DisplayManager::drawBatteryBadge(int logicalWidth, int logicalHeight) {
   drawTinyTextAt(batteryLabel_, x, y, footerColor(), kTinyScale);
 }
 
-void DisplayManager::drawPreviousSentenceHint() {
-  drawTinyTextAt("<<", kFooterMarginX, kFooterMarginBottom, footerColor(), kTinyScale);
-}
-
 void DisplayManager::drawFooter(const String &chapterLabel, const String &statusLabel,
                                 const ReaderChrome &chrome) {
   if (!chrome.showChapter && !chrome.showProgress) {
     return;
   }
 
-  const int y = kDisplayHeight - kTinyGlyphHeight * kTinyScale - kFooterMarginBottom;
-  int maxChapterWidth = kDisplayWidth - (kFooterMarginX * 2);
+  const int footerWidth = logicalWidth();
+  const int y = logicalHeight() - kTinyGlyphHeight * kTinyScale - kFooterMarginBottom;
+  int maxChapterWidth = footerWidth - (kFooterMarginX * 2);
 
   if (chrome.showProgress) {
     const String status = statusLabel.isEmpty() ? "0%" : statusLabel;
     const int statusWidth = measureTinyTextWidth(status, kTinyScale);
-    const int rightX = std::max(kFooterMarginX, kDisplayWidth - kFooterMarginX - statusWidth);
+    const int rightX = std::max(kFooterMarginX, footerWidth - kFooterMarginX - statusWidth);
     maxChapterWidth = std::max(0, rightX - kFooterMarginX - 18);
     drawTinyTextAt(status, rightX, y, footerColor(), kTinyScale);
   }
@@ -1857,7 +1863,7 @@ void DisplayManager::renderRsvpWord(const String &word, const String &chapterLab
   const int virtualWidth = logicalWidth();
   const int virtualHeight = logicalHeight();
   const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
-  const int y = std::max(0, (virtualHeight - glyphHeight) / 2);
+  const int y = readerWordY(virtualHeight, glyphHeight);
   const int focusIndex = findFocusLetterIndex(word);
   const int x = rsvpStartX(word, focusIndex, virtualWidth, 1, false);
   const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
@@ -1869,9 +1875,6 @@ void DisplayManager::renderRsvpWord(const String &word, const String &chapterLab
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
                chrome);
-  }
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
   }
   if (chrome.showBattery) {
     drawBatteryBadge(virtualWidth, virtualHeight);
@@ -1896,10 +1899,10 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
   lastRenderKey_ = renderKey;
 
   const int scale = 1;
-  const int virtualWidth = kDisplayWidth;
-  const int virtualHeight = kDisplayHeight;
+  const int virtualWidth = logicalWidth();
+  const int virtualHeight = logicalHeight();
   const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
-  const int wordY = std::max(0, (virtualHeight - glyphHeight) / 2);
+  const int wordY = readerWordY(virtualHeight, glyphHeight);
   const int wpmY =
       std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
   const int focusIndex = findFocusLetterIndex(word);
@@ -1914,9 +1917,6 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
                chrome);
-  }
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
   }
   if (chrome.showBattery) {
     drawBatteryBadge();
@@ -1943,10 +1943,10 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
 
   if (fontSizeLevel == 1) {
     const int scale = 1;
-    const int virtualWidth = kDisplayWidth;
-    const int virtualHeight = kDisplayHeight;
+    const int virtualWidth = logicalWidth();
+    const int virtualHeight = logicalHeight();
     const int mediumHeight = mediumGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
-    const int textY = std::max(0, (virtualHeight - mediumHeight) / 2);
+    const int textY = readerWordY(virtualHeight, mediumHeight);
     const int focusIndex = findFocusLetterIndex(word);
     const int currentX = rsvpStartX70(word, focusIndex, virtualWidth, false);
     const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
@@ -1973,9 +1973,6 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
                                                            : footerStatusLabel,
                  chrome);
     }
-    if (chrome.showPreviousSentenceHint) {
-      drawPreviousSentenceHint();
-    }
     if (chrome.showBattery) {
       drawBatteryBadge();
     }
@@ -1985,11 +1982,11 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
 
   const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
   const int scale = 1;
-  const int virtualWidth = kDisplayWidth;
-  const int virtualHeight = kDisplayHeight;
+  const int virtualWidth = logicalWidth();
+  const int virtualHeight = logicalHeight();
   const int textHeight = scaledPercentDimension(
       baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word)), style.scalePercent);
-  const int textY = std::max(0, (virtualHeight - textHeight) / 2);
+  const int textY = readerWordY(virtualHeight, textHeight);
   const int focusIndex = findFocusLetterIndex(word);
   const int currentX =
       rsvpStartXScaledPercent(word, focusIndex, virtualWidth, style.scalePercent, false);
@@ -2018,9 +2015,6 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
                                                          : footerStatusLabel,
                chrome);
   }
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
-  }
   if (chrome.showBattery) {
     drawBatteryBadge();
   }
@@ -2043,8 +2037,8 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
     motionPermille = 1000;
   }
 
-  const bool canUseBandOnly = !showFooter && overlayText.isEmpty() &&
-                              !chrome.showPreviousSentenceHint && tickerPlaybackFrameActive_;
+  const bool canUseBandOnly =
+      !showFooter && overlayText.isEmpty() && tickerPlaybackFrameActive_;
   String renderKey =
       "ticker|" + String(fontSizeLevel) + "|i:" + String(currentWordIndex) + "|m:" +
       String(motionPermille) + "|f:" + String(showFooter ? 1 : 0) + "|d:" +
@@ -2140,9 +2134,6 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
     if (showFooter) {
       drawFooter(chapterLabel, String(progressPercent) + "%", chrome);
     }
-    if (chrome.showPreviousSentenceHint) {
-      drawPreviousSentenceHint();
-    }
     if (!canUseBandOnly) {
       if (chrome.showBattery) {
         drawBatteryBadge();
@@ -2225,9 +2216,6 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
   }
   if (showFooter) {
     drawFooter(chapterLabel, String(progressPercent) + "%", chrome);
-  }
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
   }
   if (!canUseBandOnly) {
     if (chrome.showBattery) {
@@ -2364,10 +2352,10 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
 
   if (fontSizeLevel == 1) {
     const int scale = 1;
-    const int virtualWidth = kDisplayWidth;
-    const int virtualHeight = kDisplayHeight;
+    const int virtualWidth = logicalWidth();
+    const int virtualHeight = logicalHeight();
     const int mediumHeight = mediumGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
-    const int textY = std::max(0, (virtualHeight - mediumHeight) / 2);
+    const int textY = readerWordY(virtualHeight, mediumHeight);
     const int wpmY =
         std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
     const int focusIndex = findFocusLetterIndex(word);
@@ -2397,9 +2385,6 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
                                                            : footerStatusLabel,
                  chrome);
     }
-    if (chrome.showPreviousSentenceHint) {
-      drawPreviousSentenceHint();
-    }
     if (chrome.showBattery) {
       drawBatteryBadge();
     }
@@ -2409,11 +2394,11 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
 
   const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
   const int scale = 1;
-  const int virtualWidth = kDisplayWidth;
-  const int virtualHeight = kDisplayHeight;
+  const int virtualWidth = logicalWidth();
+  const int virtualHeight = logicalHeight();
   const int textHeight = scaledPercentDimension(
       baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word)), style.scalePercent);
-  const int textY = std::max(0, (virtualHeight - textHeight) / 2);
+  const int textY = readerWordY(virtualHeight, textHeight);
   const int wpmY =
       std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
   const int focusIndex = findFocusLetterIndex(word);
@@ -2444,9 +2429,6 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
                chrome);
-  }
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
   }
   if (chrome.showBattery) {
     drawBatteryBadge();
@@ -2630,9 +2612,6 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                        : footerStatusLabel,
              chrome);
-  if (chrome.showPreviousSentenceHint) {
-    drawPreviousSentenceHint();
-  }
   if (chrome.showBattery) {
     drawBatteryBadge();
   }

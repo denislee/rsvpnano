@@ -186,6 +186,7 @@ class App {
   void cycleUiLanguage(uint32_t nowMs);
   void cycleReaderMode(uint32_t nowMs);
   void cycleHandednessMode(uint32_t nowMs);
+  void togglePortraitMode(uint32_t nowMs);
   void togglePhantomWords(uint32_t nowMs);
   void cycleReaderFontSize(uint32_t nowMs);
   void applyDisplayPreferences(uint32_t nowMs, bool rerender = true);
@@ -271,6 +272,7 @@ class App {
   String readerModeLabel() const;
   String pauseModeLabel() const;
   String handednessLabel() const;
+  String portraitModeLabel() const;
   String readerFontSizeLabel() const;
   String readerTypefaceLabel() const;
   String typographyTuningLabel() const;
@@ -392,8 +394,10 @@ class App {
   bool scrollModeEnabled() const;
   void applyUiOrientation(BoardConfig::UiOrientation orientation);
   void applyReaderUiOrientation();
+  void applyRsvpWordUiOrientation();
   void reloadRuntimePreferences(uint32_t nowMs, bool rerender);
   BoardConfig::UiOrientation readerUiOrientation() const;
+  BoardConfig::UiOrientation rsvpWordUiOrientation() const;
   bool uiRotated180() const;
   uint8_t effectiveAnchorPercent() const;
   DisplayManager::TypographyConfig effectiveTypographyConfig() const;
@@ -551,5 +555,6 @@ class App {
   UiLanguage uiLanguage_ = UiLanguage::English;
   ReaderMode readerMode_ = ReaderMode::Rsvp;
   HandednessMode handednessMode_ = HandednessMode::Right;
+  bool portraitMode_ = false;
   DisplayManager::TypographyConfig typographyConfig_;
 };

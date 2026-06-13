@@ -168,6 +168,7 @@ constexpr size_t kSettingsDisplayReaderBatteryIndex = 7;
 constexpr size_t kSettingsDisplayReaderChapterIndex = 8;
 constexpr size_t kSettingsDisplayReaderProgressIndex = 9;
 constexpr size_t kSettingsDisplayLanguageIndex = 10;
+constexpr size_t kSettingsDisplayPortraitIndex = 11;
 constexpr size_t kSettingsPacingReadingModeIndex = 1;
 constexpr size_t kSettingsPacingPauseModeIndex = 2;
 constexpr size_t kSettingsPacingWpmIndex = 3;
@@ -198,6 +199,7 @@ constexpr const char *kPrefNightMode = "night";
 constexpr const char *kPrefUiLanguage = "ui_lang";
 constexpr const char *kPrefReaderMode = "read_mode";
 constexpr const char *kPrefHandedness = "handed";
+constexpr const char *kPrefPortraitMode = "portrait";
 constexpr const char *kPrefPhantomWords = "phantom_on";
 constexpr const char *kPrefFooterMetricMode = "prog_md";
 constexpr const char *kPrefBatteryLabelMode = "bat_md";
@@ -632,6 +634,7 @@ void App::begin() {
       preferences_.getUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_)));
   handednessMode_ = handednessModeFromSetting(
       preferences_.getUChar(kPrefHandedness, static_cast<uint8_t>(handednessMode_)));
+  portraitMode_ = preferences_.getBool(kPrefPortraitMode, portraitMode_);
   readerFontSizeIndex_ = preferences_.getUChar(kPrefReaderFontSize, readerFontSizeIndex_);
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
     readerFontSizeIndex_ = 0;
@@ -1298,6 +1301,7 @@ void App::reloadRuntimePreferences(uint32_t nowMs, bool rerender) {
       preferences_.getUChar(kPrefReaderMode, static_cast<uint8_t>(readerMode_)));
   handednessMode_ = handednessModeFromSetting(
       preferences_.getUChar(kPrefHandedness, static_cast<uint8_t>(handednessMode_)));
+  portraitMode_ = preferences_.getBool(kPrefPortraitMode, portraitMode_);
   readerFontSizeIndex_ = preferences_.getUChar(kPrefReaderFontSize, readerFontSizeIndex_);
   if (readerFontSizeIndex_ >= kReaderFontSizeCount) {
     readerFontSizeIndex_ = 0;
@@ -1490,6 +1494,14 @@ void App::cycleHandednessMode(uint32_t nowMs) {
   Serial.printf("[display] handedness=%s rotation180=%u\n", handednessLabel().c_str(),
                 uiRotated180() ? 1U : 0U);
   applyHandednessSettings(nowMs);
+}
+
+void App::togglePortraitMode(uint32_t nowMs) {
+  portraitMode_ = !portraitMode_;
+  preferences_.putBool(kPrefPortraitMode, portraitMode_);
+  Serial.printf("[display] portrait mode=%s\n", portraitModeLabel().c_str());
+  applyReaderUiOrientation();
+  applyDisplayPreferences(nowMs);
 }
 
 void App::togglePhantomWords(uint32_t nowMs) {
@@ -1706,7 +1718,6 @@ DisplayManager::ReaderChrome App::readerChrome() const {
   chrome.showBattery = !reading || readerBatteryVisibleWhilePlaying_;
   chrome.showChapter = !reading || readerChapterVisibleWhilePlaying_;
   chrome.showProgress = !reading || readerProgressVisibleWhilePlaying_;
-  chrome.showPreviousSentenceHint = !contextViewVisible_ || scrollModeEnabled();
   return chrome;
 }
 
@@ -2764,6 +2775,9 @@ void App::selectSettingsItem(uint32_t nowMs) {
       case kSettingsDisplayLanguageIndex:
         cycleUiLanguage(nowMs);
         return;
+      case kSettingsDisplayPortraitIndex:
+        togglePortraitMode(nowMs);
+        return;
       default:
         return;
     }
@@ -3375,6 +3389,7 @@ void App::rebuildSettingsMenuItems() {
     settingsMenuItems_.push_back("Reading percent: " +
                                  onOffLabel(readerProgressVisibleWhilePlaying_));
     settingsMenuItems_.push_back(uiText(UiText::Language) + ": " + uiLanguageLabel());
+    settingsMenuItems_.push_back("Portrait mode: " + portraitModeLabel());
   } else if (menuScreen_ == MenuScreen::SettingsPacing) {
     settingsMenuItems_.push_back(uiText(UiText::Back));
     settingsMenuItems_.push_back("Reading mode: " + readerModeLabel());
@@ -3721,6 +3736,8 @@ String App::pauseModeLabel() const {
 String App::handednessLabel() const {
   return handednessMode_ == HandednessMode::Left ? "Left" : "Right";
 }
+
+String App::portraitModeLabel() const { return onOffLabel(portraitMode_); }
 
 String App::readerFontSizeLabel() const {
   uint8_t levelIndex = readerFontSizeIndex_;
@@ -5744,6 +5761,19 @@ BoardConfig::UiOrientation App::readerUiOrientation() const {
                         : BoardConfig::UiOrientation::Landscape;
 }
 
+// Orientation for the single-word RSVP view. Portrait mode only rotates this
+// view (and the WPM feedback that shares its layout); menus, scroll mode, and
+// status screens stay in landscape, which their layouts assume.
+BoardConfig::UiOrientation App::rsvpWordUiOrientation() const {
+  if (!portraitMode_) {
+    return readerUiOrientation();
+  }
+  return uiRotated180() ? BoardConfig::UiOrientation::PortraitFlipped
+                        : BoardConfig::UiOrientation::Portrait;
+}
+
+void App::applyRsvpWordUiOrientation() { applyUiOrientation(rsvpWordUiOrientation()); }
+
 String App::formatFocusTimerRemaining(uint32_t nowMs) const {
   const uint32_t remainingMs = focusTimer_.remainingMs(nowMs);
   const uint32_t totalSeconds = remainingMs / 1000UL;
@@ -5961,7 +5991,7 @@ void App::handleCurrentBookReadFailure(uint32_t nowMs, const char *detail) {
 }
 
 void App::renderReaderWord() {
-  applyReaderUiOrientation();
+  applyRsvpWordUiOrientation();
   contextViewVisible_ = false;
   const String beforeText = phantomWordsEnabled_ ? phantomBeforeText() : "";
   const String afterText = phantomWordsEnabled_ ? phantomAfterText() : "";
@@ -6125,6 +6155,7 @@ void App::renderWpmFeedback(uint32_t nowMs) {
     return;
   }
 
+  applyRsvpWordUiOrientation();
   contextViewVisible_ = false;
   const String beforeText = phantomWordsEnabled_ ? phantomBeforeText() : "";
   const String afterText = phantomWordsEnabled_ ? phantomAfterText() : "";

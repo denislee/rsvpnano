@@ -32,13 +32,11 @@ class DisplayManager {
     ReaderChrome()
         : showBattery(true),
           showChapter(true),
-          showProgress(true),
-          showPreviousSentenceHint(true) {}
+          showProgress(true) {}
 
     bool showBattery;
     bool showChapter;
     bool showProgress;
-    bool showPreviousSentenceHint;
   };
 
   struct LibraryItem {
@@ -169,7 +167,6 @@ class DisplayManager {
                                    int width, int xOffset);
   void drawBatteryBadge();
   void drawBatteryBadge(int logicalWidth, int logicalHeight);
-  void drawPreviousSentenceHint();
   void drawFooter(const String &chapterLabel, const String &statusLabel,
                   const ReaderChrome &chrome);
   void drawRsvpAnchorGuide(int anchorX, int textY, int textHeight);
@@ -186,6 +183,9 @@ class DisplayManager {
   void flushFullWidthLogicalBand(int yStart, int yEnd);
   int logicalWidth() const;
   int logicalHeight() const;
+  // Vertical position for the reading word: centered in landscape, near the top
+  // in portrait so the word reads at the top of the tall screen.
+  int readerWordY(int virtualHeight, int textHeight) const;
   uint16_t focusTimerBreakColor() const;
 
   uint16_t *virtualFrame_ = nullptr;
