@@ -43,6 +43,8 @@ constexpr uint16_t kFooterMetricTapHeightPx = 32;
 constexpr uint16_t kBatteryBadgeTapWidthPx = 160;
 constexpr uint16_t kBatteryBadgeTapHeightPx = 40;
 constexpr uint16_t kScrubStepPx = 22;
+// Vertical drag distance that bumps the speed by one WPM step while adjusting.
+constexpr uint16_t kWpmDragStepPx = 18;
 constexpr uint16_t kBrowseNeutralZonePx = 14;
 constexpr uint16_t kFocusTimerCancelHoldMaxDriftPx = 20;
 constexpr int kMaxScrubStepsPerGesture = 96;
@@ -2067,18 +2069,14 @@ void App::applyPausedTouchGesture(const TouchEvent &event, uint32_t nowMs) {
   }
 
   if (pausedTouchIntent_ == TouchIntent::Wpm) {
-    if (!ended) {
-      return;
+    applyWpmDrag(deltaY, nowMs);
+    if (ended) {
+      preferences_.putUShort(kPrefWpm, reader_.wpm());
+      Serial.printf("[app] WPM=%u interval=%lu ms\n", reader_.wpm(),
+                    static_cast<unsigned long>(reader_.wordIntervalMs()));
+      pausedTouch_.active = false;
+      pausedTouchIntent_ = TouchIntent::None;
     }
-
-    const int wpmDelta = (deltaY < 0) ? 1 : -1;
-    reader_.adjustWpm(wpmDelta);
-    preferences_.putUShort(kPrefWpm, reader_.wpm());
-    renderWpmFeedback(nowMs);
-    Serial.printf("[app] WPM=%u interval=%lu ms\n", reader_.wpm(),
-                  static_cast<unsigned long>(reader_.wordIntervalMs()));
-    pausedTouch_.active = false;
-    pausedTouchIntent_ = TouchIntent::None;
     return;
   }
 
@@ -2134,8 +2132,35 @@ void App::applyScrubTarget(int targetSteps, uint32_t nowMs) {
   Serial.printf("[app] scrub target=%d word=%s\n", targetSteps, reader_.currentWord().c_str());
 }
 
+void App::applyWpmDrag(int deltaY, uint32_t nowMs) {
+  // Drag up to speed up, down to slow down. Each kWpmDragStepPx of vertical
+  // travel bumps the speed by one reader step; we track the net steps applied
+  // this gesture so dragging back toward the start restores the original speed.
+  const int targetSteps = -deltaY / static_cast<int>(kWpmDragStepPx);
+  int diff = targetSteps - pausedTouch_.gestureStepsApplied;
+  if (diff != 0) {
+    while (diff > 0) {
+      reader_.adjustWpm(1);
+      --diff;
+    }
+    while (diff < 0) {
+      reader_.adjustWpm(-1);
+      ++diff;
+    }
+    pausedTouch_.gestureStepsApplied = targetSteps;
+  }
+  // Render every move so the speed updates live under the finger, even when the
+  // step count is unchanged (keeps the feedback label on screen mid-drag).
+  contextViewVisible_ = false;
+  renderWpmFeedback(nowMs);
+}
+
 int App::browseScrollRatePermille(uint16_t y) const {
-  const int centerY = BoardConfig::DISPLAY_HEIGHT / 2;
+  // The browse-scroll touch axis spans the full view height, which is taller in
+  // portrait mode (the long panel axis) than in landscape.
+  const int viewHeight =
+      portraitMode_ ? BoardConfig::PANEL_NATIVE_HEIGHT : BoardConfig::DISPLAY_HEIGHT;
+  const int centerY = viewHeight / 2;
   const int signedDistance = static_cast<int>(y) - centerY;
   const int absDistance = abs(signedDistance);
   if (absDistance <= static_cast<int>(kBrowseNeutralZonePx)) {
@@ -2155,6 +2180,7 @@ int App::browseScrollRatePermille(uint16_t y) const {
 }
 
 void App::renderContextBrowsePreview(size_t currentIndex, uint16_t scrollProgressPermille) {
+  applyReaderContentUiOrientation();
   const size_t wordCount = reader_.wordCount();
   if (wordCount == 0) {
     renderReaderWord();
@@ -5763,10 +5789,12 @@ BoardConfig::UiOrientation App::readerUiOrientation() const {
                         : BoardConfig::UiOrientation::Landscape;
 }
 
-// Orientation for the single-word RSVP view. Portrait mode only rotates this
-// view (and the WPM feedback that shares its layout); menus, scroll mode, and
-// status screens stay in landscape, which their layouts assume.
-BoardConfig::UiOrientation App::rsvpWordUiOrientation() const {
+// Orientation for the in-reader content views: the single-word RSVP view, the
+// WPM feedback, the paused context/browse preview, and the scroll reader. When
+// portrait mode is on, all of these rotate to portrait so pausing or scrubbing
+// stays in the same orientation as reading. Menus and status screens still stay
+// landscape, which their layouts assume.
+BoardConfig::UiOrientation App::readerContentUiOrientation() const {
   if (!portraitMode_) {
     return readerUiOrientation();
   }
@@ -5774,7 +5802,9 @@ BoardConfig::UiOrientation App::rsvpWordUiOrientation() const {
                         : BoardConfig::UiOrientation::Portrait;
 }
 
-void App::applyRsvpWordUiOrientation() { applyUiOrientation(rsvpWordUiOrientation()); }
+void App::applyReaderContentUiOrientation() {
+  applyUiOrientation(readerContentUiOrientation());
+}
 
 String App::formatFocusTimerRemaining(uint32_t nowMs) const {
   const uint32_t remainingMs = focusTimer_.remainingMs(nowMs);
@@ -5934,7 +5964,7 @@ void App::renderActiveReader(uint32_t nowMs) {
     return;
   }
 
-  applyReaderUiOrientation();
+  applyReaderContentUiOrientation();
   if (scrollModeEnabled()) {
     if (wpmFeedbackVisible_) {
       renderScrollReader(nowMs, String(reader_.wpm()) + " WPM");
@@ -5993,7 +6023,7 @@ void App::handleCurrentBookReadFailure(uint32_t nowMs, const char *detail) {
 }
 
 void App::renderReaderWord() {
-  applyRsvpWordUiOrientation();
+  applyReaderContentUiOrientation();
   contextViewVisible_ = false;
   const String beforeText = phantomWordsEnabled_ ? phantomBeforeText() : "";
   const String afterText = phantomWordsEnabled_ ? phantomAfterText() : "";
@@ -6097,7 +6127,7 @@ void App::invalidateContextPreviewWindow() {
 }
 
 void App::renderContextPreview() {
-  applyReaderUiOrientation();
+  applyReaderContentUiOrientation();
   const size_t wordCount = reader_.wordCount();
   if (wordCount == 0) {
     renderReaderWord();
@@ -6116,7 +6146,7 @@ void App::renderContextPreview() {
 }
 
 void App::renderScrollReader(uint32_t nowMs, const String &overlayText) {
-  applyReaderUiOrientation();
+  applyReaderContentUiOrientation();
   contextViewVisible_ = false;
   const size_t wordCount = reader_.wordCount();
   if (wordCount == 0) {
@@ -6149,7 +6179,7 @@ void App::renderWpmFeedback(uint32_t nowMs) {
     return;
   }
 
-  applyReaderUiOrientation();
+  applyReaderContentUiOrientation();
   wpmFeedbackVisible_ = true;
   wpmFeedbackUntilMs_ = nowMs + kWpmFeedbackMs;
   if (scrollModeEnabled()) {
@@ -6157,7 +6187,7 @@ void App::renderWpmFeedback(uint32_t nowMs) {
     return;
   }
 
-  applyRsvpWordUiOrientation();
+  applyReaderContentUiOrientation();
   contextViewVisible_ = false;
   const String beforeText = phantomWordsEnabled_ ? phantomBeforeText() : "";
   const String afterText = phantomWordsEnabled_ ? phantomAfterText() : "";

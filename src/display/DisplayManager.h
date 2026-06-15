@@ -186,6 +186,10 @@ class DisplayManager {
   // Vertical position for the reading word: centered in landscape, near the top
   // in portrait so the word reads at the top of the tall screen.
   int readerWordY(int virtualHeight, int textHeight) const;
+  // Vertical position for the WPM feedback label: pinned near the bottom in
+  // landscape, but just below the word in portrait (where the word sits near the
+  // top) so the speed stays in view instead of at the far bottom edge.
+  int wpmFeedbackY(int virtualHeight, int wordY, int wordHeight) const;
   uint16_t focusTimerBreakColor() const;
 
   uint16_t *virtualFrame_ = nullptr;

@@ -217,6 +217,7 @@ class App {
   String onOffLabel(bool enabled) const;
   int scrubStepsForDrag(int deltaX) const;
   void applyScrubTarget(int targetSteps, uint32_t nowMs);
+  void applyWpmDrag(int deltaY, uint32_t nowMs);
   int browseScrollRatePermille(uint16_t y) const;
   void applyBrowseHoldScroll(uint16_t y, uint32_t elapsedMs, uint32_t nowMs);
   void renderContextBrowsePreview(size_t currentIndex, uint16_t scrollProgressPermille);
@@ -394,10 +395,10 @@ class App {
   bool scrollModeEnabled() const;
   void applyUiOrientation(BoardConfig::UiOrientation orientation);
   void applyReaderUiOrientation();
-  void applyRsvpWordUiOrientation();
+  void applyReaderContentUiOrientation();
   void reloadRuntimePreferences(uint32_t nowMs, bool rerender);
   BoardConfig::UiOrientation readerUiOrientation() const;
-  BoardConfig::UiOrientation rsvpWordUiOrientation() const;
+  BoardConfig::UiOrientation readerContentUiOrientation() const;
   bool uiRotated180() const;
   uint8_t effectiveAnchorPercent() const;
   DisplayManager::TypographyConfig effectiveTypographyConfig() const;

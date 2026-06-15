@@ -47,10 +47,15 @@ constexpr int kWpmFeedbackBottomMargin = 16;
 // In portrait orientation the reading word sits near the top of the screen
 // instead of being vertically centered. This is the gap above the word.
 constexpr int kReaderPortraitTopMargin = 28;
+// Gap between the word and the WPM feedback label in portrait orientation.
+constexpr int kReaderPortraitWpmGap = 22;
 constexpr int kTinyGlyphWidth = 5;
 constexpr int kTinyGlyphHeight = 7;
 constexpr int kTinyGlyphSpacing = 1;
 constexpr int kTinyScale = 2;
+// The live WPM feedback label is drawn larger than the tiny footer text so the
+// speed is clearly readable while dragging to adjust it.
+constexpr int kWpmLabelScale = 3;
 constexpr int kFooterMarginX = 12;
 constexpr int kFooterMarginBottom = 8;
 constexpr int kCompactMenuRowHeight = 22;
@@ -1135,6 +1140,17 @@ int DisplayManager::readerWordY(int virtualHeight, int textHeight) const {
   return std::max(0, (virtualHeight - textHeight) / 2);
 }
 
+int DisplayManager::wpmFeedbackY(int virtualHeight, int wordY, int wordHeight) const {
+  const int bottomY = std::max(
+      0, virtualHeight - kTinyGlyphHeight * kWpmLabelScale - kWpmFeedbackBottomMargin - 24);
+  if (!isPortraitOrientation(uiOrientation_)) {
+    return bottomY;
+  }
+  // The word sits near the top in portrait; keep the speed just under it.
+  const int belowWordY = wordY + wordHeight + kReaderPortraitWpmGap;
+  return std::min(bottomY, belowWordY);
+}
+
 int DisplayManager::chooseTextScale(const String &word) const {
   const int usableWidth = std::max(1, measureTextWidth(word));
   const int maxScaleX = kDisplayWidth / usableWidth;
@@ -1555,7 +1571,10 @@ void DisplayManager::drawTinyTextAt(const String &text, int x, int y, uint16_t c
 
 void DisplayManager::drawTinyTextCentered(const String &text, int y, uint16_t color, int scale) {
   const int textWidth = measureTinyTextWidth(text, scale);
-  drawTinyTextAt(text, std::max(0, (kVirtualBufferWidth - textWidth) / 2), y, color, scale);
+  // Center within the active logical width: this equals the buffer width in
+  // landscape but narrows to the panel width in portrait, so centered labels
+  // (e.g. the WPM feedback) stay on screen instead of off the right edge.
+  drawTinyTextAt(text, std::max(0, (logicalWidth() - textWidth) / 2), y, color, scale);
 }
 
 void DisplayManager::drawTinyTextCentered(const String &text, int y, uint16_t color, int scale,
@@ -1906,8 +1925,7 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
   const int virtualHeight = logicalHeight();
   const int glyphHeight = baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
   const int wordY = readerWordY(virtualHeight, glyphHeight);
-  const int wpmY =
-      std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
+  const int wpmY = wpmFeedbackY(virtualHeight, wordY, glyphHeight);
   const int focusIndex = findFocusLetterIndex(word);
   const int x = rsvpStartX(word, focusIndex, virtualWidth, 1, false);
   const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
@@ -1915,7 +1933,7 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
   clearVirtualBuffer(virtualWidth, virtualHeight);
   drawRsvpAnchorGuide(anchorX, wordY, glyphHeight);
   drawRsvpWordAt(word, x, wordY, focusIndex);
-  drawTinyTextCentered(wpmText, wpmY, focusColor(), kTinyScale);
+  drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
   if (showFooter) {
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
@@ -2359,8 +2377,7 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     const int virtualHeight = logicalHeight();
     const int mediumHeight = mediumGlyphHeightForTypeface(effectiveReaderTypefaceForText(word));
     const int textY = readerWordY(virtualHeight, mediumHeight);
-    const int wpmY =
-        std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
+    const int wpmY = wpmFeedbackY(virtualHeight, textY, mediumHeight);
     const int focusIndex = findFocusLetterIndex(word);
     const int currentX = rsvpStartX70(word, focusIndex, virtualWidth, false);
     const int anchorX = (virtualWidth * currentAnchorPercent()) / 100;
@@ -2382,7 +2399,7 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
           currentX + currentLayout.maxX + kPhantomCurrentGapMedium - afterLayout.minX;
       drawSerif70TextAt(afterText, afterX, textY, phantomColor);
     }
-    drawTinyTextCentered(wpmText, wpmY, focusColor(), kTinyScale);
+    drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
     if (showFooter) {
       drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                            : footerStatusLabel,
@@ -2402,8 +2419,7 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
   const int textHeight = scaledPercentDimension(
       baseGlyphHeightForTypeface(effectiveReaderTypefaceForText(word)), style.scalePercent);
   const int textY = readerWordY(virtualHeight, textHeight);
-  const int wpmY =
-      std::max(0, virtualHeight - kTinyGlyphHeight * kTinyScale - kWpmFeedbackBottomMargin - 24);
+  const int wpmY = wpmFeedbackY(virtualHeight, textY, textHeight);
   const int focusIndex = findFocusLetterIndex(word);
   const int currentX =
       rsvpStartXScaledPercent(word, focusIndex, virtualWidth, style.scalePercent, false);
@@ -2427,7 +2443,7 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     const int afterX = currentX + currentLayout.maxX + style.currentGap - afterLayout.minX;
     drawSerifTextScaledAt(afterText, afterX, textY, phantomColor, style.scalePercent);
   }
-  drawTinyTextCentered(wpmText, wpmY, focusColor(), kTinyScale);
+  drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
   if (showFooter) {
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
@@ -2457,8 +2473,8 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   };
 
   const int scale = 1;
-  const int virtualWidth = kDisplayWidth;
-  const int virtualHeight = kDisplayHeight;
+  const int virtualWidth = logicalWidth();
+  const int virtualHeight = logicalHeight();
   const int overlayReserve = overlayText.isEmpty() ? 0 : (kTinyGlyphHeight * kTinyScale + 6);
   const bool showFooterRow = chrome.showChapter || chrome.showProgress;
   const int footerReserve =
