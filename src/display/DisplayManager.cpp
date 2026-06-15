@@ -49,6 +49,10 @@ constexpr int kWpmFeedbackBottomMargin = 16;
 constexpr int kReaderPortraitTopMargin = 28;
 // Gap between the word and the WPM feedback label in portrait orientation.
 constexpr int kReaderPortraitWpmGap = 22;
+// The portrait panel is far narrower than landscape (172px vs 640px logical
+// width), so the reader word and its phantom neighbours are scaled down to this
+// percentage of their landscape size at every font-size level.
+constexpr uint8_t kReaderPortraitFontScalePercent = 60;
 constexpr int kTinyGlyphWidth = 5;
 constexpr int kTinyGlyphHeight = 7;
 constexpr int kTinyGlyphSpacing = 1;
@@ -73,6 +77,10 @@ constexpr int kScrollParagraphGap = 8;
 constexpr int kScrollParagraphIndent = 22;
 constexpr int kScrollSpaceWidth = 10;
 constexpr int kScrollSerifDivisor = 2;
+// Percent-based equivalent of kScrollSerifDivisor (the body is drawn at ~1/2 the
+// base glyph). Portrait reuses the percent serif path so it can shrink the body
+// by kReaderPortraitFontScalePercent without being limited to integer divisors.
+constexpr uint8_t kScrollSerifScalePercent = 50;
 constexpr int kWordTickerGapLarge = 16;
 constexpr int kWordTickerGapMedium = 12;
 constexpr int kWordTickerGapSmall = 9;
@@ -133,6 +141,15 @@ int logicalHeightForOrientation(BoardConfig::UiOrientation orientation) {
 bool isPortraitOrientation(BoardConfig::UiOrientation orientation) {
   return orientation == BoardConfig::UiOrientation::Portrait ||
          orientation == BoardConfig::UiOrientation::PortraitFlipped;
+}
+
+// Reduce a tiny-bitmap-font integer scale (footer, battery, WPM labels) by the
+// portrait font factor, rounding to the nearest whole step and never below 1.
+int portraitAdjustedTinyScale(int scale, BoardConfig::UiOrientation orientation) {
+  if (!isPortraitOrientation(orientation)) {
+    return scale;
+  }
+  return std::max(1, (scale * kReaderPortraitFontScalePercent + 50) / 100);
 }
 
 void mapPhysicalToLogical(BoardConfig::UiOrientation orientation, int physicalX, int physicalY,
@@ -725,7 +742,7 @@ int scaledWordWidthPercent(const String &word, uint8_t scalePercent) {
   return textLayoutWidth(serifWordLayoutScaledPercent(word, -1, scalePercent));
 }
 
-ReaderTextStyle readerTextStyle(uint8_t fontSizeLevel) {
+ReaderTextStyle readerTextStyle(uint8_t fontSizeLevel, bool portrait = false) {
   static constexpr ReaderTextStyle kStyles[] = {
       {100, kPhantomCurrentGapLarge, kPhantomAlphaLarge},
       {70, kPhantomCurrentGapMedium, kPhantomAlphaMedium},
@@ -737,7 +754,12 @@ ReaderTextStyle readerTextStyle(uint8_t fontSizeLevel) {
   if (fontSizeLevel >= styleCount) {
     fontSizeLevel = 0;
   }
-  return kStyles[fontSizeLevel];
+  ReaderTextStyle style = kStyles[fontSizeLevel];
+  if (portrait) {
+    style.scalePercent = static_cast<uint8_t>(
+        (static_cast<int>(style.scalePercent) * kReaderPortraitFontScalePercent) / 100);
+  }
+  return style;
 }
 
 int orpOrdinalForLength(int length) {
@@ -1605,10 +1627,11 @@ void DisplayManager::drawBatteryBadge(int logicalWidth, int logicalHeight) {
     return;
   }
 
-  const int width = measureTinyTextWidth(batteryLabel_, kTinyScale);
+  const int tinyScale = portraitAdjustedTinyScale(kTinyScale, uiOrientation_);
+  const int width = measureTinyTextWidth(batteryLabel_, tinyScale);
   const int x = std::max(kFooterMarginX, logicalWidth - kFooterMarginX - width);
   const int y = logicalHeight > (kDisplayHeight * 2) ? kFooterMarginBottom + 8 : kFooterMarginBottom;
-  drawTinyTextAt(batteryLabel_, x, y, footerColor(), kTinyScale);
+  drawTinyTextAt(batteryLabel_, x, y, footerColor(), tinyScale);
 }
 
 void DisplayManager::drawFooter(const String &chapterLabel, const String &statusLabel,
@@ -1617,22 +1640,23 @@ void DisplayManager::drawFooter(const String &chapterLabel, const String &status
     return;
   }
 
+  const int tinyScale = portraitAdjustedTinyScale(kTinyScale, uiOrientation_);
   const int footerWidth = logicalWidth();
-  const int y = logicalHeight() - kTinyGlyphHeight * kTinyScale - kFooterMarginBottom;
+  const int y = logicalHeight() - kTinyGlyphHeight * tinyScale - kFooterMarginBottom;
   int maxChapterWidth = footerWidth - (kFooterMarginX * 2);
 
   if (chrome.showProgress) {
     const String status = statusLabel.isEmpty() ? "0%" : statusLabel;
-    const int statusWidth = measureTinyTextWidth(status, kTinyScale);
+    const int statusWidth = measureTinyTextWidth(status, tinyScale);
     const int rightX = std::max(kFooterMarginX, footerWidth - kFooterMarginX - statusWidth);
     maxChapterWidth = std::max(0, rightX - kFooterMarginX - 18);
-    drawTinyTextAt(status, rightX, y, footerColor(), kTinyScale);
+    drawTinyTextAt(status, rightX, y, footerColor(), tinyScale);
   }
 
   if (chrome.showChapter) {
     const String chapter = fitTinyText(chapterLabel.isEmpty() ? "START" : chapterLabel,
-                                      maxChapterWidth, kTinyScale);
-    drawTinyTextAt(chapter, kFooterMarginX, y, footerColor(), kTinyScale);
+                                      maxChapterWidth, tinyScale);
+    drawTinyTextAt(chapter, kFooterMarginX, y, footerColor(), tinyScale);
   }
 }
 
@@ -1933,7 +1957,8 @@ void DisplayManager::renderRsvpWordWithWpm(const String &word, uint16_t wpm,
   clearVirtualBuffer(virtualWidth, virtualHeight);
   drawRsvpAnchorGuide(anchorX, wordY, glyphHeight);
   drawRsvpWordAt(word, x, wordY, focusIndex);
-  drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
+  drawTinyTextCentered(wpmText, wpmY, focusColor(),
+                       portraitAdjustedTinyScale(kWpmLabelScale, uiOrientation_));
   if (showFooter) {
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
@@ -1962,7 +1987,7 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
 
   lastRenderKey_ = renderKey;
 
-  if (fontSizeLevel == 1) {
+  if (fontSizeLevel == 1 && !isPortraitOrientation(uiOrientation_)) {
     const int scale = 1;
     const int virtualWidth = logicalWidth();
     const int virtualHeight = logicalHeight();
@@ -2001,7 +2026,8 @@ void DisplayManager::renderPhantomRsvpWord(const String &beforeText, const Strin
     return;
   }
 
-  const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
+  const ReaderTextStyle style =
+      readerTextStyle(fontSizeLevel, isPortraitOrientation(uiOrientation_));
   const int scale = 1;
   const int virtualWidth = logicalWidth();
   const int virtualHeight = logicalHeight();
@@ -2150,7 +2176,8 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
       prevRight = prevLeft - gap;
     }
     if (!overlayText.isEmpty()) {
-      drawTinyTextCentered(overlayText, overlayY, focusColor(), kTinyScale);
+      drawTinyTextCentered(overlayText, overlayY, focusColor(),
+                           portraitAdjustedTinyScale(kTinyScale, uiOrientation_));
     }
     if (showFooter) {
       drawFooter(chapterLabel, String(progressPercent) + "%", chrome);
@@ -2233,7 +2260,8 @@ void DisplayManager::renderWordTickerView(const std::vector<ContextWord> &words,
     prevRight = prevLeft - gap;
   }
   if (!overlayText.isEmpty()) {
-    drawTinyTextCentered(overlayText, overlayY, focusColor(), kTinyScale);
+    drawTinyTextCentered(overlayText, overlayY, focusColor(),
+                         portraitAdjustedTinyScale(kTinyScale, uiOrientation_));
   }
   if (showFooter) {
     drawFooter(chapterLabel, String(progressPercent) + "%", chrome);
@@ -2371,7 +2399,7 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
 
   lastRenderKey_ = renderKey;
 
-  if (fontSizeLevel == 1) {
+  if (fontSizeLevel == 1 && !isPortraitOrientation(uiOrientation_)) {
     const int scale = 1;
     const int virtualWidth = logicalWidth();
     const int virtualHeight = logicalHeight();
@@ -2399,7 +2427,8 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
           currentX + currentLayout.maxX + kPhantomCurrentGapMedium - afterLayout.minX;
       drawSerif70TextAt(afterText, afterX, textY, phantomColor);
     }
-    drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
+    drawTinyTextCentered(wpmText, wpmY, focusColor(),
+                       portraitAdjustedTinyScale(kWpmLabelScale, uiOrientation_));
     if (showFooter) {
       drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                            : footerStatusLabel,
@@ -2412,7 +2441,8 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     return;
   }
 
-  const ReaderTextStyle style = readerTextStyle(fontSizeLevel);
+  const ReaderTextStyle style =
+      readerTextStyle(fontSizeLevel, isPortraitOrientation(uiOrientation_));
   const int scale = 1;
   const int virtualWidth = logicalWidth();
   const int virtualHeight = logicalHeight();
@@ -2443,7 +2473,8 @@ void DisplayManager::renderPhantomRsvpWordWithWpm(const String &beforeText, cons
     const int afterX = currentX + currentLayout.maxX + style.currentGap - afterLayout.minX;
     drawSerifTextScaledAt(afterText, afterX, textY, phantomColor, style.scalePercent);
   }
-  drawTinyTextCentered(wpmText, wpmY, focusColor(), kWpmLabelScale);
+  drawTinyTextCentered(wpmText, wpmY, focusColor(),
+                       portraitAdjustedTinyScale(kWpmLabelScale, uiOrientation_));
   if (showFooter) {
     drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
                                                          : footerStatusLabel,
@@ -2475,16 +2506,48 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   const int scale = 1;
   const int virtualWidth = logicalWidth();
   const int virtualHeight = logicalHeight();
-  const int overlayReserve = overlayText.isEmpty() ? 0 : (kTinyGlyphHeight * kTinyScale + 6);
+
+  // Portrait shrinks the body text (and its line metrics) by the shared portrait
+  // factor. Landscape keeps the exact integer-divisor path it always used.
+  const bool portraitScroll = isPortraitOrientation(uiOrientation_);
+  const uint8_t scrollScalePercent =
+      static_cast<uint8_t>((kScrollSerifScalePercent * kReaderPortraitFontScalePercent) / 100);
+  auto scrollScaled = [&](int value) {
+    return portraitScroll ? (value * kReaderPortraitFontScalePercent) / 100 : value;
+  };
+  const int scrollLineHeight = scrollScaled(kScrollLineHeight);
+  const int scrollParagraphGap = std::max(1, scrollScaled(kScrollParagraphGap));
+  const int scrollParagraphIndent = scrollScaled(kScrollParagraphIndent);
+  const int scrollSpaceWidth = std::max(1, scrollScaled(kScrollSpaceWidth));
+  auto measureScrollWord = [&](const String &text) {
+    return portraitScroll ? measureSerifTextWidthScaled(text, scrollScalePercent)
+                          : measureSerifTextWidth(text, kScrollSerifDivisor);
+  };
+  auto fitScrollWord = [&](const String &text, int maxWidth) {
+    return portraitScroll ? fitSerifTextScaled(text, maxWidth, scrollScalePercent)
+                          : fitSerifText(text, maxWidth, kScrollSerifDivisor);
+  };
+  auto drawScrollWord = [&](const String &text, int x, int y, uint16_t color) {
+    if (portraitScroll) {
+      drawSerifTextScaledAt(text, x, y, color, scrollScalePercent);
+    } else {
+      drawSerifTextAt(text, x, y, color, kScrollSerifDivisor);
+    }
+  };
+
+  const int scrollTinyScale = portraitAdjustedTinyScale(kTinyScale, uiOrientation_);
+  const int overlayReserve = overlayText.isEmpty() ? 0 : (kTinyGlyphHeight * scrollTinyScale + 6);
   const bool showFooterRow = chrome.showChapter || chrome.showProgress;
   const int footerReserve =
-      showFooterRow ? (kTinyGlyphHeight * kTinyScale + kFooterMarginBottom + 6) : 6;
+      showFooterRow ? (kTinyGlyphHeight * scrollTinyScale + kFooterMarginBottom + 6) : 6;
   const int textTop = kScrollTop;
   const int textBottom = virtualHeight - footerReserve - overlayReserve;
   const ReaderTypeface contextTypeface = currentReaderTypeface();
-  const int contextGlyphHeight = std::max(
-      1, (baseGlyphHeightForTypeface(contextTypeface) + kScrollSerifDivisor - 1) /
-             kScrollSerifDivisor);
+  const int contextGlyphHeight =
+      portraitScroll
+          ? scaledPercentDimension(baseGlyphHeightForTypeface(contextTypeface), scrollScalePercent)
+          : std::max(1, (baseGlyphHeightForTypeface(contextTypeface) + kScrollSerifDivisor - 1) /
+                            kScrollSerifDivisor);
   const int maxLineWidth = virtualWidth - (kScrollMarginX * 2);
 
   size_t currentLocalIndex = 0;
@@ -2511,15 +2574,15 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
     ContextLine line;
     line.start = index;
     line.paragraphStart = words[index].paragraphStart;
-    int lineWidth = line.paragraphStart ? kScrollParagraphIndent : 0;
+    int lineWidth = line.paragraphStart ? scrollParagraphIndent : 0;
 
     while (index < words.size()) {
       if (index > line.start && words[index].paragraphStart) {
         break;
       }
 
-      const int wordWidth = measureSerifTextWidth(words[index].text, kScrollSerifDivisor);
-      const int gap = (index == line.start) ? 0 : kScrollSpaceWidth;
+      const int wordWidth = measureScrollWord(words[index].text);
+      const int gap = (index == line.start) ? 0 : scrollSpaceWidth;
       if (index > line.start && lineWidth + gap + wordWidth > maxLineWidth) {
         break;
       }
@@ -2569,11 +2632,11 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
   int y = textTop;
   for (size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
     if (lineIndex != 0 && lines[lineIndex].paragraphStart) {
-      y += kScrollParagraphGap;
+      y += scrollParagraphGap;
     }
     lineTops.push_back(y);
     contentBottom = y + contextGlyphHeight;
-    y += kScrollLineHeight;
+    y += scrollLineHeight;
   }
 
   const int currentCenterY = lineTops[currentLineIndex] + (contextGlyphHeight / 2);
@@ -2609,23 +2672,22 @@ void DisplayManager::renderScrollView(const std::vector<ContextWord> &words, uin
       break;
     }
 
-    int x = kScrollMarginX + (line.paragraphStart ? kScrollParagraphIndent : 0);
+    int x = kScrollMarginX + (line.paragraphStart ? scrollParagraphIndent : 0);
     for (size_t wordIndex = line.start; wordIndex < line.end && wordIndex < words.size();
          ++wordIndex) {
       const ContextWord &word = words[wordIndex];
       const uint16_t color =
           (word.current && currentFocusHighlightEnabled()) ? focusColor() : wordColor();
-      const String visibleWord =
-          fitSerifText(word.text, virtualWidth - x - kScrollMarginX, kScrollSerifDivisor);
-      drawSerifTextAt(visibleWord, x, lineY, color, kScrollSerifDivisor);
-      x += measureSerifTextWidth(visibleWord, kScrollSerifDivisor) + kScrollSpaceWidth;
+      const String visibleWord = fitScrollWord(word.text, virtualWidth - x - kScrollMarginX);
+      drawScrollWord(visibleWord, x, lineY, color);
+      x += measureScrollWord(visibleWord) + scrollSpaceWidth;
     }
   }
 
   if (!overlayText.isEmpty()) {
     const int overlayY = textBottom + 8;
-    drawTinyTextCentered(fitTinyText(overlayText, virtualWidth - 24, kTinyScale), overlayY,
-                         focusColor(), kTinyScale);
+    drawTinyTextCentered(fitTinyText(overlayText, virtualWidth - 24, scrollTinyScale), overlayY,
+                         focusColor(), scrollTinyScale);
   }
 
   drawFooter(chapterLabel, footerStatusLabel.isEmpty() ? String(progressPercent) + "%"
