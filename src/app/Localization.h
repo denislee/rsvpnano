@@ -63,6 +63,7 @@ enum class UiText : uint8_t {
   Large,
   Medium,
   Small,
+  ExtraSmall,
   Standard,
   RsvpMode,
   ScrollMode,
@@ -208,6 +209,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Mediano";
         case UiText::Small:
           return "Pequeno";
+        case UiText::ExtraSmall:
+          return "Muy pequeno";
         case UiText::Standard:
           return "Estandar";
         case UiText::RsvpMode:
@@ -324,6 +327,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Moyen";
         case UiText::Small:
           return "Petit";
+        case UiText::ExtraSmall:
+          return "Tres petit";
         case UiText::Standard:
           return "Standard";
         case UiText::RsvpMode:
@@ -440,6 +445,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Mittel";
         case UiText::Small:
           return "Klein";
+        case UiText::ExtraSmall:
+          return "Sehr klein";
         case UiText::Standard:
           return "Standard";
         case UiText::RsvpMode:
@@ -556,6 +563,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Mediu";
         case UiText::Small:
           return "Mic";
+        case UiText::ExtraSmall:
+          return "Foarte mic";
         case UiText::Standard:
           return "Standard";
         case UiText::RsvpMode:
@@ -672,6 +681,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Sredni";
         case UiText::Small:
           return "Maly";
+        case UiText::ExtraSmall:
+          return "Bardzo maly";
         case UiText::Standard:
           return "Standard";
         case UiText::RsvpMode:
@@ -789,6 +800,8 @@ inline const char *text(UiLanguage language, UiText key) {
           return "Medium";
         case UiText::Small:
           return "Small";
+        case UiText::ExtraSmall:
+          return "Extra small";
         case UiText::Standard:
           return "Standard";
         case UiText::RsvpMode:

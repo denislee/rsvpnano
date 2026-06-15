@@ -75,9 +75,11 @@ constexpr int kWordTickerBandPadding = 10;
 constexpr int kPhantomCurrentGapLarge = 30;
 constexpr int kPhantomCurrentGapMedium = 24;
 constexpr int kPhantomCurrentGapSmall = 20;
+constexpr int kPhantomCurrentGapExtraSmall = 16;
 constexpr uint8_t kPhantomAlphaLarge = 54;
 constexpr uint8_t kPhantomAlphaMedium = 62;
 constexpr uint8_t kPhantomAlphaSmall = 72;
+constexpr uint8_t kPhantomAlphaExtraSmall = 82;
 constexpr int kTypographyTrackingMin = -2;
 constexpr int kTypographyTrackingMax = 3;
 constexpr int kTypographyAnchorMin = 30;
@@ -723,6 +725,7 @@ ReaderTextStyle readerTextStyle(uint8_t fontSizeLevel) {
       {100, kPhantomCurrentGapLarge, kPhantomAlphaLarge},
       {70, kPhantomCurrentGapMedium, kPhantomAlphaMedium},
       {50, kPhantomCurrentGapSmall, kPhantomAlphaSmall},
+      {38, kPhantomCurrentGapExtraSmall, kPhantomAlphaExtraSmall},
   };
 
   const size_t styleCount = sizeof(kStyles) / sizeof(kStyles[0]);

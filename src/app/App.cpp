@@ -227,9 +227,9 @@ constexpr const char *kPrefWifiSsid = "wifi_ssid";
 constexpr const char *kPrefWifiPass = "wifi_pass";
 constexpr const char *kPrefOtaAuto = "ota_auto";
 constexpr const char *kPrefOtaOwner = "ota_owner";
-constexpr size_t kReaderFontSizeCount = 3;
-constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144};
-constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208};
+constexpr size_t kReaderFontSizeCount = 4;
+constexpr size_t kPhantomBeforeCharTargets[] = {64, 96, 144, 208};
+constexpr size_t kPhantomAfterCharTargets[] = {96, 144, 208, 288};
 constexpr uint32_t kNoSavedWordIndex = 0xFFFFFFFFUL;
 constexpr uint16_t kPacingDelayMinMs = 0;
 constexpr uint16_t kPacingDelayMaxMs = 600;
@@ -3751,8 +3751,10 @@ String App::readerFontSizeLabel() const {
     case 1:
       return uiText(UiText::Medium);
     case 2:
-    default:
       return uiText(UiText::Small);
+    case 3:
+    default:
+      return uiText(UiText::ExtraSmall);
   }
 }
 
